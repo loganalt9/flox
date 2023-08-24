@@ -35,6 +35,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["black", "coverage", "jupyterlab", "matplotlib", "numpy", "pytest", "seaborn", "tensorboard", "torchvision"]
 monitoring = ["tensorboard"]
+proxystore = ["proxystore[endpoints]"]
 
 [tool.pytest.ini_options]
 addopts = [
