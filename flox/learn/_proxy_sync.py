@@ -57,12 +57,14 @@ def sync_federated_fit(
     elif executor == "process":
         executor = ProcessPoolExecutor(max_workers)
 
+    store = None
+
     # Use ProxyStore if using Globus Compute
     #TODO: change from local to globus-compute, but currently testing locally
     if flock.proxystore_ready and where == "local":
         from proxystore.connectors.endpoint import EndpointConnector
         from proxystore.store import Store
-        endpoints = [n["proxystore_endpoint"] for n in flock.topo.nodes.values()]
+        endpoints = {n["proxystore_endpoint"] for n in flock.topo.nodes.values()}
          
         connector = EndpointConnector(endpoints=endpoints,)
         store = Store(name='FLoXStore', connector=connector)
@@ -112,18 +114,25 @@ def _worker_task(
     module_state_dict: StateDict,
     dataset: torch_data.Dataset | torch_data.Subset,
     strategy: Strategy,
+    store: Any = None,
     **train_hyper_params,
 ):
     state_dict, history = _local_fitting(
         node, parent, module_cls, module_state_dict, dataset, **train_hyper_params
     )
     # NOTE: The key-value scheme returned by workers has to match with aggregators.
-    return {
+    
+    ret_dict = {
         "node/idx": node.idx,
         "node/kind": node.kind,
         "state_dict": state_dict,
         "history": history,
     }
+
+    if store is not None:
+        return store.Proxy(ret_dict)   
+    
+    return store
 
 
 def _local_fitting(
@@ -233,6 +242,7 @@ def _aggregator_task(
                 strategy=strategy,
                 node=child,
                 parent=node,  # Note: Set the parent to this call's `node`.
+                store=store,
             )
             children_futures.append(future)
 
@@ -245,6 +255,7 @@ def _aggregator_task(
             strategy,
             node,
             future,
+            store=store,
         )
 
         for child_fut in children_futures:
@@ -260,6 +271,7 @@ def _children_done_callback(
     node: FlockNode,
     parent_future: Future,
     child_future_to_resolve: Future,
+    store: Any,
 ):
     """
 
@@ -275,14 +287,14 @@ def _children_done_callback(
     if all([future.done() for future in children_futures]):
         child_results = [future.result() for future in children_futures]
         future = executor.submit(
-            _aggregate, node=node, strategy=strategy, results=child_results
+            _aggregate, node=node, strategy=strategy, results=child_results, store=store,
         )
         aggregation_done_callback = functools.partial(_set_parent_future, parent_future)
         future.add_done_callback(aggregation_done_callback)
 
 
 def _aggregate(
-    node: FlockNode, strategy: Strategy, results: list[dict[str, Any]]
+    node: FlockNode, strategy: Strategy, results: list[dict[str, Any]] | Any, store: Any = None,
 ) -> dict[str, Any]:
     """Aggregate the state dicts from each of the results.
 
@@ -299,12 +311,18 @@ def _aggregate(
 
     # NOTE: The key-value scheme returned by aggregators has to match with workers.
     histories = (res["history"] for res in results)
-    return {
+
+    ret_dict = {
         "node/idx": node.idx,
         "node/kind": node.kind,
         "state_dict": avg_state_dict,
         "history": extend_dicts(*histories),
     }
+
+    if store is not None:
+        return store.proxy(ret_dict)
+        
+    return ret_dict
 
 
 def _set_parent_future(parent_future: Future, child_future: Future):
