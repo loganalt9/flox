@@ -9,7 +9,8 @@ import torch.utils.data as torch_data
 from collections import defaultdict
 from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor, Future
 from tqdm import tqdm
-from typing import Mapping, NewType, Optional, Union, Any
+from typing import Mapping, NewType, Optional, Union, Any, Literal, TypeAlias
+from typing import TYPE_CHECKING
 
 from flox.flock import Flock, FlockNode, FlockNodeID, FlockNodeKind
 from flox.flock.states import FloxWorkerState, FloxAggregatorState
@@ -17,6 +18,13 @@ from flox.strategies import Strategy
 from flox.utils.data import FederatedDataset
 from flox.typing import StateDict
 from flox.utils.misc import extend_dicts
+
+# for type-checking if not deferred
+if TYPE_CHECKING:
+    from proxystore.proxy import Proxy 
+    from proxystore.store import Store
+
+Where: TypeAlias = Literal["local", "globus_compute"]
 
 
 def sync_federated_fit(
@@ -27,6 +35,7 @@ def sync_federated_fit(
     strategy: Strategy | str = "fedsgd",
     executor: str = "thread",
     max_workers: int = 1,
+    where: Where = "local"
 ) -> pd.DataFrame:
     """Synchronous federated learning implementation.
 
@@ -47,7 +56,7 @@ def sync_federated_fit(
         executor (str): Which executor to launch tasks with, defaults to "thread" (i.e.,
             ``ThreadPoolExecutor``).
         max_workers (int): Number of workers to execute tasks.
-
+        where (Where): How to launch the flock.
     Returns:
         pd.DataFrame: Results from the FL process.
     """
@@ -55,6 +64,19 @@ def sync_federated_fit(
         executor = ThreadPoolExecutor(max_workers)
     elif executor == "process":
         executor = ProcessPoolExecutor(max_workers)
+
+    store: Store | None = None
+
+    # Use ProxyStore if using Globus Compute
+    #TODO: change from local to globus-compute, but currently testing locally
+    if flock.proxystore_ready and where == "local":
+        from proxystore.connectors.endpoint import EndpointConnector
+        from proxystore.store import Store
+        endpoints = {n["proxystore_endpoint"] for n in flock.topo.nodes.values()}
+         
+        connector = EndpointConnector(endpoints=endpoints,)
+        store = Store(name='FLoXStore', connector=connector)
+ 
 
     if isinstance(strategy, str):
         strategy = Strategy.get_strategy(strategy)()
@@ -75,6 +97,7 @@ def sync_federated_fit(
             datasets=datasets,
             strategy=strategy,
             parent=None,
+            store=store,
         )
 
         # Collect results from the aggregated future.
@@ -102,8 +125,9 @@ def _worker_task(
     module_cls: type[torch.nn.Module],
     module_state_dict: StateDict,
     dataset: torch_data.Dataset | torch_data.Subset,
+    store: Store | None = None,
     **train_hyper_params,
-):
+) -> Proxy | dict:
     node_state, state_dict, history = _local_fitting(
         node,
         parent,
@@ -114,13 +138,18 @@ def _worker_task(
         **train_hyper_params,
     )
     # NOTE: The key-value scheme returned by workers has to match with aggregators.
-    return {
+    scheme = {
         "node/state": node_state,
         "node/idx": node.idx,
         "node/kind": node.kind,
         "state_dict": state_dict,
         "history": history,
     }
+
+    if store is not None:
+        return store.Proxy(scheme)   
+    
+    return scheme
 
 
 def _local_fitting(
@@ -206,6 +235,7 @@ def _traverse(
     datasets: FederatedDataset,
     strategy: Strategy,
     parent: Optional[FlockNode] = None,
+    store: Store | None = None,
 ) -> Future:
     """
     Launches an aggregation task on the provided ``FlockNode`` and the appropriate tasks
@@ -227,6 +257,7 @@ def _traverse(
             module_cls=module_cls,
             module_state_dict=module_state_dict,
             dataset=datasets[node.idx],
+            store = store,
             **hyper_params,
         )
     else:
@@ -245,6 +276,7 @@ def _traverse(
                 strategy=strategy,
                 node=child,
                 parent=node,  # Note: Set the parent to this call's `node`.
+                store=store,
             )
             children_futures.append(future)
 
@@ -257,6 +289,7 @@ def _traverse(
             strategy,
             node,
             future,
+            store=store,
         )
 
         for child_fut in children_futures:
@@ -272,6 +305,7 @@ def _aggregation_callback(
     node: FlockNode,
     parent_future: Future,
     child_future_to_resolve: Future,
+    store: Store | None,
 ):
     """
 
@@ -287,14 +321,14 @@ def _aggregation_callback(
     if all([future.done() for future in children_futures]):
         child_results = [future.result() for future in children_futures]
         future = executor.submit(
-            _aggregation_task, node=node, strategy=strategy, results=child_results
+            _aggregation_task, node=node, strategy=strategy, results=child_results, store=store,
         )
         aggregation_done_callback = functools.partial(_set_parent_future, parent_future)
         future.add_done_callback(aggregation_done_callback)
 
 
 def _aggregation_task(
-    node: FlockNode, strategy: Strategy, results: list[dict[str, Any]]
+    node: FlockNode, strategy: Strategy, results: list[dict[str, Any]] | Any, store: Any = None,
 ) -> dict[str, Any]:
     """Aggregate the state dicts from each of the results.
 
@@ -318,13 +352,18 @@ def _aggregation_task(
 
     # NOTE: The key-value scheme returned by aggregators has to match with workers.
     histories = (res["history"] for res in results)
-    return {
+    scheme = {
         "node/state": node_state,
         "node/idx": node.idx,
         "node/kind": node.kind,
         "state_dict": avg_state_dict,
         "history": extend_dicts(*histories),
     }
+
+    if store is not None:
+        return store.proxy(scheme)
+        
+    return scheme
 
 
 def _set_parent_future(parent_future: Future, child_future: Future):

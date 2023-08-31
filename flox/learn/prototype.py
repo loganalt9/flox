@@ -14,7 +14,7 @@ from torch.utils.data import Subset
 from tqdm import tqdm
 from typing import Any, Literal, Mapping, Optional, TypeAlias
 
-from flox.aggregator.base import SimpleAvg
+from flox.strategies.registry.fedavg import FedSGD
 from flox.flock import Flock, FlockNodeID, FlockNode, FlockNodeKind
 from flox.utils.misc import extend_dicts
 
@@ -165,7 +165,7 @@ def _aggr_node_fn(node: FlockNode, results: list[dict[str, Any]]):
 
     local_module_weights = {res["node/idx"]: res["state_dict"] for res in results}
     global_module = None  # NOTE: For now, this is fine because `SimpleAvg` doesn't do anything with module.
-    avg_state_dict = SimpleAvg()(global_module, local_module_weights)
+    avg_state_dict = FedSGD(global_module, local_module_weights)
     # NOTE: The key-value scheme returned by aggregators has to match with workers.
     histories = (res["history"] for res in results)
     return {
