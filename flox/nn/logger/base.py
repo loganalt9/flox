@@ -3,7 +3,7 @@ from typing import Any
 import pandas as pd
 
 
-class BaseLogger:
+class BaseLogger():
     def __init__(self):
         self.records = []
 
