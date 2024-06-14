@@ -13,17 +13,14 @@ class CSVLogger:
     def log_dict(self, record: dict) -> None:
         self.records.append(record)
 
-    def _create_dataframe(self) -> pd.DataFrame:
-        return pd.DataFrame.from_records(self.records)
+    
 
     def export(self, filename: str | Path) -> None:
-        df = self._create_dataframe()
-        # Create nicer format to ouput to file
-        def format(row):
-            return " - ".join([f"{key}: {value}" for key, value in row.items()])
+        def _create_dataframe(records: list) -> pd.DataFrame:
+                return pd.DataFrame.from_records(records)
         
-        df = df.apply(format, axis=1)
-        df.to_csv(filename, index=False, header=False)
+        df = _create_dataframe(self.records)
+        df.to_csv(filename, index=False)
 
 
 
@@ -38,7 +35,7 @@ path = Path('./test.csv')
 
 log.export(path)
 
-log2.clear()
-
 log2.export("./test2.csv")
+
+print('test')
 
