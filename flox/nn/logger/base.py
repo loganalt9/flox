@@ -1,25 +1,16 @@
-from typing import Any
+from typing import Protocol, Any, runtime_checkable
 
-import pandas as pd
+@runtime_checkable
+class BaseLogger(Protocol):
+    records: list
 
-
-class BaseLogger():
-    def __init__(self):
+    def __init__(self) -> None:
         self.records = []
 
-    def log(self, name: str, value: Any):
-        ...
+    def log(self, name: str, loss: int, round: int | None) -> None:
+        self.records.append({'name': name,
+                            'train/loss': loss,
+                             "round": round})
 
-    def log_dict(self, record):
-        for name, value in record.items():
-            self.log(name, value)
-
-    def clear(self) -> None:
-        self.records = []
-
-    def to_pandas(self) -> pd.DataFrame:
-        df = pd.DataFrame.from_records(self.records)
-        for col in df.columns:
-            if "time" in col:
-                df[col] = pd.to_datetime(df[col])
-        return df
+    def log_dict(self, record: dict) -> None:
+        self.records.append(record)
