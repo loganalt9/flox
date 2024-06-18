@@ -58,7 +58,7 @@ class Trainer:
                 #     "train/time": datetime.datetime.now(),
                 # }
                 # self.logger.log_dict(rec)
-
+              
                 # If a validation ``Dataset`` has been provided (i.e., the users
                 # have specified an object instance for it), then run validation.
                 if valid_dataloader is not None:
@@ -138,15 +138,16 @@ class Trainer:
             if log_condition(batch_idx):
                 running_loss /= self.log_every_n_batches
                 running_acc /= self.log_every_n_batches
-                self.logger.log_dict(
-                    {
-                        "train/acc": running_acc,
-                        "train/loss": running_loss,
-                        "train/epoch": epoch_index,
-                        "train/batch_idx": batch_idx,
-                        "train/time": datetime.datetime.now(),
-                    }
-                )
+                #self.logger.log_dict(
+                #    {
+                #        "train/acc": running_acc,
+                #        "train/loss": running_loss,
+                #        "train/epoch": epoch_index,
+                #        "train/batch_idx": batch_idx,
+                #        "train/time": datetime.datetime.now(),
+                #    }
+                #)
+                self.logger.log('train/loss', running_loss, batch_idx, epoch_index, datetime.datetime.now())
                 running_acc, running_loss = 0.0, 0.0
 
         if total_loss / len(train_dataloader) > last_loss:
