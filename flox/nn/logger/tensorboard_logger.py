@@ -28,25 +28,12 @@ class TensorBoardLogger:
                             'epoch': epoch,
                             'datetime': time or datetime.now()})
 
-        self.writer.add_scalar(name, value, global_step=epoch, walltime=time)
+        self.writer.add_scalar(name, value, global_step=epoch, walltime=time.timestamp())
 
     def log_dict(self, record: dict) -> None:
         self.records.append(record)
-        self.writer.add_scalar(record['name'], record['value'], global_step=record['epoch'], walltime=record['datetime'])
+        self.writer.add_scalar(record['name'], record['value'], global_step=record['epoch'], walltime=record['datetime'].timestamp())
     
     def clear(self) -> None:
         self.records = []
         self.writer.close()
-    
-"""
-node1 = FlockNode(idx='ag1', kind=NodeKind.AGGREGATOR)
-node2 = FlockNode(idx='work1', kind=NodeKind.WORKER)
-
-logger1 = TensorBoardLogger(node1)
-logger2 = TensorBoardLogger(node2)
-
-import numpy as np
-for step in range(100):
-    logger1.log('Train/Loss', np.random.random(), 'node 1', step)
-    logger2.log('Train/Loss', np.random.random(), 'node 2', step)
-"""
