@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 
 from flox.flock.states import WorkerState
 from flox.nn import FloxModule
-from flox.nn.logger.csv_logger import CSVLogger
+from flox.nn.logger import Logger, CSVLogger, TensorBoardLogger
 from flox.strategies import TrainerStrategy
 
 

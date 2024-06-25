@@ -1,35 +1,40 @@
 from typing import Protocol, Any, runtime_checkable
 from datetime import datetime
 from flox.flock.node import FlockNode
+from pathlib import Path
+
 
 @runtime_checkable
-class BaseLogger(Protocol):
+class Logger(Protocol):
     records: list
 
-    def __init__(self, node: FlockNode | None = None) -> None:
+    def __init__(
+        self, node: FlockNode | None = None, filename: str | Path | None = None
+    ) -> None:
         self.records = []
 
     def log(
-            self, 
-            name: str,
-            value: Any,
-            nodeid: str | None,
-            epoch: int | None,
-            time: datetime | None
+        self,
+        name: str,
+        value: Any,
+        nodeid: str | None,
+        epoch: int | None,
+        time: datetime | None,
     ) -> None:
         """
+        log each value passed in with its correct key
+
         args:
-            - name: type to be logged
-            - value: the value of the type to be logged
-            - nodeid: identifies which node the log pertains to
-            - epoch: training round
-            - time: time of log
+            name (Str): type to be logged
+            value (Any): the value of the type to be logged
+            nodeid (str | None): identifies which node the log pertains to
+            epoch (int | None): training round
+            time (datetime | None): time of log
         """
-        self.records.append({'name': name,
-                            'value': value,
-                            'nodeid': nodeid,
-                            'epoch': epoch,
-                            'datetime': time or datetime.now()})
 
     def log_dict(self, record: dict) -> None:
-        self.records.append(record)
+        """
+        log/add a dictionary to records
+        Args:
+            record (dict): set of keys and values to be logged
+        """

@@ -7,6 +7,7 @@ import flox.strategies as strats
 from flox.data import FloxDataset
 from flox.flock import Flock
 from flox.nn import FloxModule
+from flox.nn.logger import Logger, CSVLogger, TensorBoardLogger
 from flox.nn.typing import Kind
 from flox.runtime.launcher import (
     GlobusComputeLauncher,
@@ -55,7 +56,7 @@ def federated_fit(
     launcher_kind: str = "process",
     launcher_cfg: dict[str, t.Any] | None = None,
     debug_mode: bool = False,
-    logging: bool = False,
+    logger: Logger | None = None,
     redis_ip_address: str = "127.0.0.1",
 ) -> tuple[FloxModule, DataFrame]:
     """
@@ -109,7 +110,7 @@ def federated_fit(
                 module=module,
                 dataset=datasets,
                 strategy=parsed_strategy,
-                logging=logging,
+                logger=logger,
             )
 
         case "async":

@@ -19,6 +19,7 @@ if t.TYPE_CHECKING:
     from flox import Flock
     from flox.data import FloxDataset
     from flox.nn import FloxModule
+    from flox.nn.logger import Logger, CSVLogger, TensorBoardLogger
     from flox.runtime.runtime import Runtime
     from flox.runtime import Result
     from flox.strategies import (
@@ -42,7 +43,8 @@ class SyncProcessV2(Process):
         dataset: FloxDataset,
         global_rounds: int,
         debug_mode: bool = False,
-        logging: bool = False,
+        #logging: bool = False,
+        logger: Logger | None = None
     ):
         self.runtime = runtime
         self.flock = flock
@@ -52,7 +54,7 @@ class SyncProcessV2(Process):
         self.global_rounds = global_rounds
         self.debug_mode = debug_mode
         self._selected_children = {}
-        self.logging = logging
+        self.logger = logger
         self.params = None
 
     def start(self, debug_mode: bool = False) -> tuple[FloxModule, pd.DataFrame]:
@@ -64,7 +66,7 @@ class SyncProcessV2(Process):
                 self.global_model = DebugModule()
 
         histories = []
-        if not self.logging:
+        if not self.logger:
             pbar = tqdm(total=self.global_rounds, desc=self.pbar_desc)
         else:
             pbar = None
@@ -72,7 +74,7 @@ class SyncProcessV2(Process):
         for round_num in range(self.global_rounds):
             self.log(f"Starting round {round_num+1}/{self.global_rounds}.")
             self.params = self.global_model.state_dict()
-            step_result = self.step().result()
+            step_result = self.step().result() #stuck here
             step_result.history["round"] = round_num
 
             if not debug_mode:
@@ -82,7 +84,7 @@ class SyncProcessV2(Process):
 
             histories.append(step_result.history)
             self.global_model.load_state_dict(step_result.params)
-            if not self.logging:
+            if not self.logger:
                 pbar.update()
 
         history = pd.concat(histories)
@@ -235,5 +237,7 @@ class SyncProcessV2(Process):
     def log(self, msg: str):
         ts = str(datetime.now())
         ts = ts.split(".")[0]
-        if self.logging:
-            print(f"( {ts} - SyncProcessV2 ) ❯  {msg}")
+        if self.logger:
+            #print(f"( {ts} - SyncProcessV2 ) ❯  {msg}")
+            self.logger.log(msg, ts)
+
